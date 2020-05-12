@@ -1,0 +1,174 @@
+---
+title: "Exploratory Data Analysis"
+author: "Ravin Lathigra"
+date: "20/04/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+knitr::opts_chunk$set(eval = TRUE)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(comment = F)
+```
+
+
+### Libraries
+
+```{r}
+
+if(!require(keras)) install.packages("keras")
+if(!require(GGally)) install.packages("GGally")
+if(!require(tidyverse)) install.packages("tidyverse")
+if(!require(caret)) install.packages("caret")
+if(!require(RColorBrewer)) install.packages("RColorBrewer")
+```
+
+## Introduction
+
+People have never had more access to media content than they do today.  Gone are the days of renting movies from brick and mortar locations; there are generations of kids today that will grow up, blissfully unaware that those before them had to painstakingly travel to a store, select a small selection of movies and watch them many times as they can before the following weekend.  In my personal experience, the movies I selected were largely driven by 4 factors:
+
+1- **Word of mouth**:  What movies did my peers recommend?
+2- **New Releases:**  Large displays on prime shelving real-estate made any new release movie a must see regardless of its premise
+3- **Cover design:**  Like many craft beers nowadays, part of the experience of renting movies was in enjoying the covers of the films and selecting ones that captivated you.
+4- **Staff Recommendations:**  When all else fails...resort to asking store staff.
+
+In today's age we have endless supplies of movies, but limited time to enjoy them.  The question is then, *"how do we as potential viewers parse through available movies and select ones that have the highest likely of resulting in an enjoyable viewing experience?"*.  To the rescue are movie recommendation systems; predictive models capable of predicting film ratings.  If we can understand how and why certain films will be rated more favourably than others, we can begin to tailor movie selection to those of which show the most promise in garning favorable public reviews.  This report outlines an approach I took to develop a recommendation system.
+
+The data used to train a recommendation system was the `MovieLens` data set.  This data set was split into a training set of 9,000,055 observations used to train the recommendation system, and a test set (or validation set) of 999,999 observations to assess the performance of the trained recommendations system on new data.  The inital data set (before any feature generation or transformations) contained the following features:
+
+Available Predictors
++ `userID`: The ID of the individual rating the movie
++ `movieID`: The ID of the movie being rated
++ `timestamp`: The time of the rating
++ `title`: The tile of the movie
++ `genres`: The genre of the movie
+
+Target Variable: `Rating` - The numeric rating assinged by a user.
+
+
+does any person review the same movie more than once?
+
+### Analysis
+
+
++ How many genres are being used.
+
+```{r}
+
+#come back and make sure that this points to the origional data.
+edx <- read_csv("edx.csv")
+test <- read_csv("validation.csv")
+
+```
+
+
+
+```{r}
+
+str(edx)
+str(test)
+
+```
+
+
+
+```{r}
+
+#the first thing we are going to do is analyze each predictor
+
+
+##The following funtion parses through
+
+
+count_number_of_slashed <- function(x,y) {
+  all_slashes <- str_extract_all(x,y)
+  num_of_slash <- length(unlist(all_slashes))+1
+  return(num_of_slash)
+}
+
+
+get_digit_between_brackets <- function(x){
+  temp_string <- str_extract_all(x,regex("\\((\\d+)\\)"))
+  number_of_years <- length(unlist(temp_string))
+  target_year <- temp_string[[1]][number_of_years]
+  final_string <- str_replace_all(target_year,"\\(","")
+  final_string <- str_replace_all(final_string,"\\)","")
+  return (final_string)
+  }
+
+
+
+```
+
+```{r}
+edx.1 <- edx %>%
+  mutate(n_genres = map_dbl(.x = genres,y = "\\|", count_number_of_slashed))  %>%
+  mutate(title_year = as.integer(map_chr(title,get_digit_between_brackets))) %>%
+  mutate(timestamp = lubridate::as_datetime(timestamp)) %>%
+  mutate(year = lubridate::year(timestamp),
+         month = lubridate::month(timestamp),
+         day = lubridate::wday(timestamp),
+         hour = lubridate::hour(timestamp))
+
+#
+edx.1 <- edx.1 %>%
+  mutate(genres = str_to_lower(genres)) %>%
+  mutate(genres = str_replace_all(genres,"\\(|\\)","")) %>%
+  mutate(title= str_to_lower(title))
+
+```
+
+```{r}
+
+
+df_genres<- edx %>%
+  select(genres) %>%
+  distinct(genres) %>%
+  separate_rows(genres,sep = "\\|") %>%
+  distinct(genres) %>%
+  mutate(genres = str_to_lower(genres)) %>%
+  mutate(genres = str_replace_all(genres,"\\(|\\)","")) %>%
+  arrange(genres)
+
+
+create_genre_columns <- function(x){
+  for (i in 1:nrow(df_genres)) {
+    column_to_add <- df_genres[i,] %>% pull()
+    x<- x %>%
+      mutate(dummy_column = "") %>%
+      rename(!!column_to_add :=  dummy_column)
+  }
+  return(x)
+}
+
+edx.1 <- create_genre_columns(edx.1)
+
+edx.1 <- edx.1 %>%
+  mutate(`no genres listed` = ifelse(str_detect(genres,"no genres listed"),1,0)) %>%
+  mutate(action = ifelse(str_detect(genres,"action"),1,0)) %>%
+  mutate(adventure = ifelse(str_detect(genres,"adventure"),1,0)) %>%
+  mutate(animation = ifelse(str_detect(genres,"animation"),1,0)) %>%
+  mutate(children = ifelse(str_detect(genres,"children"),1,0)) %>%
+  mutate(comedy = ifelse(str_detect(genres,"comedy"),1,0)) %>%
+  mutate(crime = ifelse(str_detect(genres,"crime"),1,0)) %>%
+  mutate(documentary = ifelse(str_detect(genres,"documentary"),1,0)) %>%
+  mutate(drama = ifelse(str_detect(genres,"drama"),1,0)) %>%
+  mutate(fantasy = ifelse(str_detect(genres,"fantasy"),1,0)) %>%
+  mutate(`film-noir` = ifelse(str_detect(genres,"film-noir"),1,0)) %>%
+  mutate(`horror` = ifelse(str_detect(genres,"horror"),1,0)) %>%
+  mutate(`imax` = ifelse(str_detect(genres,"imax"),1,0)) %>%
+  mutate(musical = ifelse(str_detect(genres,"musical"),1,0)) %>%
+  mutate(mystery= ifelse(str_detect(genres,"mystery"),1,0)) %>%
+  mutate(romance= ifelse(str_detect(genres,"romance"),1,0)) %>%
+  mutate(`scifi`= ifelse(str_detect(genres,"sci-fi"),1,0)) %>%
+  mutate(thriller= ifelse(str_detect(genres,"thriller"),1,0)) %>%
+  mutate(war= ifelse(str_detect(genres,"war"),1,0)) %>%
+  mutate(western= ifelse(str_detect(genres,"western"),1,0))
+
+edx.1 <- edx.1 %>%
+          select(-`no genres listed`)
+
+ggplot(edx.1)+
+  geom_point(aes(x= userId, y = rating, colour = factor(n_genres)))
+```
